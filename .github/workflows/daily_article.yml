@@ -1,0 +1,52 @@
+name: 每日文章生成
+
+on:
+  # 每天中午12:00（北京时间）自动触发
+  # UTC 4:00 = 北京时间 12:00
+  schedule:
+    - cron: '0 4 * * *'
+  
+  # 支持手动触发（用于测试）
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      # 1. 拉取代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # 2. 设置 Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      # 3. 安装依赖
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      # 4. 执行文章生成
+      - name: Generate article
+        run: python daily_writer.py run
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions' }}
+          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          PUSHPLUS_URL: ${{ secrets.PUSHPLUS_URL || 'http://www.pushplus.plus/send' }}
+          PUSH_TIME: ${{ secrets.PUSH_TIME || '12:00' }}
+      
+      # 5. 提交生成的文章到仓库
+      - name: Commit and push articles
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add generated_articles/ || true
+          git diff --staged --quiet || git commit -m "📝 Auto-generated article $(date '+%Y-%m-%d %H:%M')"
+          git push
