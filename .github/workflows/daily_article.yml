@@ -1,5 +1,6 @@
 name: 每日文章生成
 
+# 触发条件
 on:
   # 每天中午12:00（北京时间）自动触发
   # UTC 4:00 = 北京时间 12:00
@@ -9,8 +10,12 @@ on:
   # 支持手动触发（用于测试）
   workflow_dispatch:
 
+# 权限配置：允许 github-actions[bot] 推送代码
+permissions:
+  contents: write
+
 jobs:
-  generate:
+  generate-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     
@@ -31,10 +36,16 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
       
-      # 4. 执行文章生成
+      # 4. 创建文章存储目录（如果不存在）
+      - name: Create articles directory
+        run: |
+          mkdir -p generated_articles
+      
+      # 5. 执行文章生成
       - name: Generate article
         run: python daily_writer.py run
         env:
+          # 从 GitHub Secrets 读取配置
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions' }}
           DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL || 'deepseek-chat' }}
@@ -42,11 +53,20 @@ jobs:
           PUSHPLUS_URL: ${{ secrets.PUSHPLUS_URL || 'http://www.pushplus.plus/send' }}
           PUSH_TIME: ${{ secrets.PUSH_TIME || '12:00' }}
       
-      # 5. 提交生成的文章到仓库
+      # 6. 提交生成的文章到仓库
       - name: Commit and push articles
         run: |
+          # 配置 Git 用户
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add generated_articles/ || true
-          git diff --staged --quiet || git commit -m "📝 Auto-generated article $(date '+%Y-%m-%d %H:%M')"
-          git push
+          
+          # 添加 generated_articles 目录（强制添加，忽略 .gitignore）
+          git add -f generated_articles/ || true
+          
+          # 如果有变更则提交
+          if git diff --staged --quiet; then
+            echo "📝 没有新文章需要提交"
+          else
+            git commit -m "📝 Auto-generated article $(date '+%Y-%m-%d %H:%M')"
+            git push
+          fi
